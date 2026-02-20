@@ -7,13 +7,12 @@ from tkinter import ttk, messagebox, filedialog
 class FusionApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Fusion: Dashboard (Nugget & iMazing)")
+        self.root.title("Fusion Dashboard - iMazing x Nugget")
         self.root.geometry("900x650")
         self.root.configure(bg="#f5f5f7")
 
         self.setup_ui()
-        self.write_log("Fusion System gestartet.")
-        self.write_log("Prüfe Programme-Ordner auf Nugget...")
+        self.write_log("System gestartet. Suche in /Applications...")
 
     def setup_ui(self):
         # Sidebar
@@ -24,75 +23,78 @@ class FusionApp:
         self.main_content = tk.Frame(self.root, bg="#ffffff")
         self.main_content.pack(side="right", expand=True, fill="both")
 
-        # LOG KONSOLE
+        # LOG KONSOLE (Hacker-Style für bessere Lesbarkeit)
         tk.Label(self.main_content, text="System Log:", bg="#ffffff", font=("Arial", 10, "bold")).pack(anchor="w", padx=20, pady=(20, 0))
-        self.log_area = tk.Text(self.main_content, height=15, bg="#f0f0f0", font=("Courier", 11), relief="flat")
+        self.log_area = tk.Text(self.main_content, height=18, bg="#1e1e1e", fg="#00ff00", font=("Courier", 11), relief="flat")
         self.log_area.pack(fill="x", padx=20, pady=10)
 
         # BUTTONS
-        tk.Label(self.sidebar, text="MODUL CONTROL", fg="#8e44ad", bg="#1a1a1a", font=("Arial", 9, "bold")).pack(pady=(20, 5))
+        tk.Label(self.sidebar, text="STEUERUNG", fg="#8e44ad", bg="#1a1a1a", font=("Arial", 9, "bold")).pack(pady=(20, 5))
         
         tk.Button(self.sidebar, text="START NUGGET", command=self.run_nugget, 
-                  bg="#8e44ad", fg="white", font=("Arial", 10, "bold")).pack(fill="x", padx=20, pady=10)
+                  bg="#8e44ad", fg="white", font=("Arial", 10, "bold"), height=2).pack(fill="x", padx=20, pady=10)
 
-        ttk.Button(self.sidebar, text="Geräte Info (Live)", command=self.get_device_info).pack(fill="x", padx=20, pady=2)
+        ttk.Button(self.sidebar, text="Geräte Info (Live)", command=self.get_device_info).pack(fill="x", padx=20, pady=5)
         
-        tk.Label(self.sidebar, text="Domain: eu.org (pending)", fg="grey", bg="#1a1a1a", font=("Arial", 8)).pack(side="bottom", pady=10)
+        tk.Label(self.sidebar, text="Domain: eu.org", fg="grey", bg="#1a1a1a", font=("Arial", 8)).pack(side="bottom", pady=10)
 
     def write_log(self, text):
         self.log_area.insert(tk.END, f"> {text}\n")
         self.log_area.see(tk.END)
 
     def find_nugget(self):
-        # Wir suchen nach dem Ordner in Applications
+        # Wir suchen gezielt im Programme-Ordner
         base_apps = "/Applications"
-        # Wir suchen nach "Nugget", "Nugget-main", etc.
-        for folder in os.listdir(base_apps):
-            if "Nugget" in folder:
-                full_folder_path = os.path.join(base_apps, folder)
-                if os.path.isdir(full_folder_path):
-                    # Suche nach dem Skript im Ordner
+        if not os.path.exists(base_apps):
+            return None, None
+            
+        for item in os.listdir(base_apps):
+            # Wir suchen nach allem, was "Nugget" im Namen hat
+            if "Nugget" in item:
+                path = os.path.join(base_apps, item)
+                if os.path.isdir(path):
+                    # Suche nach dem Python-Skript im Ordner
                     for script in ["main.py", "nugget.py", "gui.py", "main_app.py"]:
-                        script_path = os.path.join(full_folder_path, script)
-                        if os.path.exists(script_path):
-                            return script_path, full_folder_path
+                        full_script_path = os.path.join(path, script)
+                        if os.path.exists(full_script_path):
+                            return full_script_path, path
         return None, None
 
     def run_nugget(self):
-        script_path, folder_path = self.find_nugget()
+        script, folder = self.find_nugget()
         
-        # Falls die Automatik im Programme-Ordner scheitert
-        if not script_path:
-            self.write_log("Nugget nicht in /Applications gefunden. Bitte manuell wählen.")
-            selected = filedialog.askdirectory(title="Wähle den Nugget-Ordner aus")
-            if selected:
-                for script in ["main.py", "nugget.py", "gui.py"]:
-                    if os.path.exists(os.path.join(selected, script)):
-                        script_path = os.path.join(selected, script)
-                        folder_path = selected
+        if not script:
+            self.write_log("Nugget nicht automatisch in /Applications gefunden.")
+            folder = filedialog.askdirectory(title="Wähle den Nugget-Ordner unter 'Programme' aus")
+            if folder:
+                for s in ["main.py", "nugget.py", "gui.py", "main_app.py"]:
+                    if os.path.exists(os.path.join(folder, s)):
+                        script = os.path.join(folder, s)
                         break
         
-        if script_path:
-            self.write_log(f"Starte: {script_path}")
+        if script:
+            self.write_log(f"Starte: {script}")
             try:
-                # Nutzt 'python3' direkt aus dem System-Pfad
-                subprocess.Popen(["python3", script_path], cwd=folder_path)
-                self.write_log("Nugget erfolgreich gestartet.")
+                # Nutzt python3 vom Mac
+                subprocess.Popen(["/usr/bin/python3", script], cwd=folder)
+                self.write_log("ERFOLG: Nugget-Fenster sollte sich gleich öffnen.")
             except Exception as e:
                 self.write_log(f"Fehler: {e}")
         else:
-            self.write_log("Abbruch: Kein Nugget-Skript gefunden.")
+            self.write_log("Abbruch: Kein Nugget-Ordner ausgewählt.")
 
     def get_device_info(self):
-        self.write_log("Suche Geräte...")
+        self.write_log("Prüfe Verbindung zu pymobiledevice3...")
         try:
-            # Versucht pymobiledevice3 über die Shell aufzurufen
-            res = subprocess.run("python3 -m pymobiledevice3 usbmux list", shell=True, capture_output=True, text=True)
+            # Wir versuchen es über den direkten Python-Aufruf
+            cmd = "/usr/bin/python3 -m pymobiledevice3 usbmux list"
+            res = subprocess.run(cmd.split(), capture_output=True, text=True)
             if res.stdout:
-                self.write_log(res.stdout)
+                self.write_log("Gerät erkannt:\n" + res.stdout)
+            elif res.stderr:
+                self.write_log("Fehler-Info: " + res.stderr)
             else:
-                self.write_log("Kein Gerät gefunden oder Fehler.")
-                if res.stderr: self.write_log(f"Error: {res.stderr}")
+                self.write_log("Kein iPhone/iPad via USB gefunden.")
         except Exception as e:
             self.write_log(f"Systemfehler: {e}")
 
