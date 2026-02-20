@@ -1,47 +1,54 @@
-name: Build Fusion (EXE & DMG)
+name: Build Fusion (Independent)
 on: [push]
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
-
+  # WINDOWS BUILD (Sollte jetzt durchlaufen)
+  build-windows:
+    runs-on: windows-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install Dependencies
+      - name: Install Tools
         run: |
           pip install pyinstaller pymobiledevice3
-          # Falls Nugget requirements hat, installieren wir sie
-          python -m pip install -r Nugget/requirements.txt || echo "Keine requirements gefunden"
-
-      - name: Build App (Windows)
-        if: matrix.os == 'windows-latest'
-        run: pyinstaller --onefile --windowed --add-data "Nugget;Nugget" FusionMain.py
-
-      - name: Build App (Mac)
-        if: matrix.os == 'macos-latest'
+          if (Test-Path Nugget/requirements.txt) { pip install -r Nugget/requirements.txt }
+      - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --add-data "Nugget:Nugget" FusionMain.py
-          # Wir machen daraus ein einfaches ZIP, das wie eine DMG funktioniert
-          cd dist && zip -r FusionMain_Mac.zip FusionMain.app
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+          # Wir erstellen den Ordner zur Sicherheit, falls das Submodule leer ist
+          if (!(Test-Path Nugget)) { New-Item -ItemType Directory -Path Nugget }
+          pyinstaller --onefile --windowed --add-data "Nugget;Nugget" FusionMain.py
+      - uses: actions/upload-artifact@v4
         with:
-          name: Fusion-${{ matrix.os }}
-          path: |
-            dist/*.exe
-            dist/*.zip
+          name: Fusion-Windows
+          path: dist/*.exe
+
+  # MAC BUILD (Mit Fehler-Toleranz)
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install Tools
+        run: |
+          pip install pyinstaller pymobiledevice3
+          # Requirements ignorieren, falls Datei fehlt
+          [ -f Nugget/requirements.txt ] && pip install -r Nugget/requirements.txt || echo "No reqs"
+      - name: Build App
+        run: |
+          mkdir -p Nugget # Sicherheitshalber
+          # Auf Mac nutzt PyInstaller einen Doppelpunkt : zum Trennen
+          pyinstaller --onefile --windowed --add-data "Nugget:Nugget" FusionMain.py
+      - name: Zip Mac App
+        run: cd dist && zip -r FusionMain_Mac.zip FusionMain.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fusion-Mac
+          path: dist/FusionMain_Mac.zip
