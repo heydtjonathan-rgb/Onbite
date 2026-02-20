@@ -1,0 +1,38 @@
+name: MacOS App Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Erlaubt manuelles Starten
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pymobiledevice3 pyinstaller
+
+      - name: Build App with PyInstaller
+        run: |
+          # --collect-all ist das Herzstück, damit pymobiledevice3 mitgeliefert wird
+          pyinstaller --noconfirm --onefile --windowed \
+          --collect-all pymobiledevice3 \
+          --hidden-import pymobiledevice3 \
+          --name "FusionPro" \
+          FusionMain.py
+
+      - name: Upload App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FusionPro-App-MacOS
+          path: dist/FusionPro.app
