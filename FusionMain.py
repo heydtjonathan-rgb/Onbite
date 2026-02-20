@@ -2,133 +2,86 @@ import sys
 import os
 import subprocess
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox
 import threading
-import datetime
-import shutil
-
-# Kompatibilitäts-Import für ältere Python-Versionen (Fix für Exit Code 1)
-from typing import Optional, Union
+import multiprocessing # WICHTIG für gefrorene Apps
 
 class FusionPro:
     def __init__(self, root):
         self.root = root
-        self.root.title("Fusion Pro - iOS Enterprise Manager")
-        self.root.geometry("1000x700")
-        self.root.configure(bg="#ffffff")
+        self.root.title("Fusion Pro - Safe Boot")
+        self.root.geometry("900x600")
         
-        # Erkennt automatisch, ob wir in einer PyInstaller-App laufen oder im Skript
-        self.python_exe = self.get_python_runtime()
+        # Sicherheits-Check: Woher kommt das Kommando?
+        self.python_exe = self.get_safe_runtime()
         
         self.setup_ui()
-        self.check_loop()
+        # Den Check-Loop starten wir erst nach 2 Sekunden, um dem System Luft zu lassen
+        self.root.after(2000, self.start_monitor)
 
-    def get_python_runtime(self):
-        """Findet die richtige Python-Umgebung für den Prozess."""
+    def get_safe_runtime(self):
+        # Wenn wir als App laufen, müssen wir das interne Python finden, 
+        # nicht die App-Binary selbst aufrufen!
         if getattr(sys, 'frozen', False):
-            # Wenn als .app/.exe gebaut, nutze das interne Python
-            return sys.executable
-        return sys.executable  # Nutzt das aktuelle Interpreter-Environment
+            # Pfad zum Python-Interpreter innerhalb des PyInstaller-Bundles
+            return sys._MEIPASS if hasattr(sys, '_MEIPASS') else sys.executable
+        return sys.executable
 
     def setup_ui(self):
-        # UI Styling wie iMazing / Apple Design
-        style = ttk.Style()
-        style.theme_use('clam')
+        self.root.configure(bg="#ffffff")
+        tk.Label(self.root, text="Fusion Pro v3 (Stable)", font=("Arial", 18, "bold"), bg="#ffffff").pack(pady=20)
         
-        # Sidebar
-        self.sidebar = tk.Frame(self.root, width=220, bg="#f5f5f7", bd=0)
-        self.sidebar.pack(side="left", fill="y")
-        self.sidebar.pack_propagate(False)
+        self.log_area = tk.Text(self.root, height=20, bg="#f4f4f4", padx=10, pady=10)
+        self.log_area.pack(padx=20, fill="both", expand=True)
+        
+        btn_frame = tk.Frame(self.root, bg="#ffffff")
+        btn_frame.pack(pady=20)
+        
+        tk.Button(btn_frame, text="Geräte Info", command=self.run_info).pack(side="left", padx=10)
+        tk.Button(btn_frame, text="Notstopp", command=self.emergency_exit, fg="red").pack(side="left", padx=10)
 
-        tk.Label(self.sidebar, text="Fusion Pro", font=("Helvetica", 20, "bold"), 
-                 bg="#f5f5f7", fg="#1d1d1f").pack(pady=30)
+    def log(self, text):
+        self.log_area.insert(tk.END, f"> {text}\n")
+        self.log_area.see(tk.END)
 
-        # Navigation
-        self.btn_frame = tk.Frame(self.sidebar, bg="#f5f5f7")
-        self.btn_frame.pack(fill="both", expand=True, padx=10)
+    def start_monitor(self):
+        self.log("Überwachung aktiv... Suche nach iOS Geräten.")
+        # Hier nutzen wir jetzt einen daemon-Thread, der keine neuen Prozesse spawnt
+        threading.Thread(target=self.device_check_logic, daemon=True).start()
 
-        self.add_menu_btn("Dashboard", self.cmd_info)
-        self.add_menu_btn("Batterie-Check", self.cmd_battery)
-        self.add_menu_btn("Supervision On", self.cmd_supervision)
-        self.add_menu_btn("System Log", self.cmd_syslog)
-
-        # Main Content
-        self.main = tk.Frame(self.root, bg="#ffffff")
-        self.main.pack(side="right", expand=True, fill="both", padx=30, pady=30)
-
-        self.status_card = tk.Label(self.main, text="Warte auf Gerät...", font=("Helvetica", 14), 
-                                   bg="#f2f2f7", fg="#86868b", height=3, width=50)
-        self.status_card.pack(pady=(0, 20))
-
-        self.log_display = tk.Text(self.main, bg="#fafafa", fg="#1d1d1f", font=("Menlo", 11),
-                                  relief="flat", highlightthickness=1, highlightbackground="#d2d2d7")
-        self.log_display.pack(expand=True, fill="both")
-
-    def add_menu_btn(self, text, command):
-        btn = tk.Button(self.btn_frame, text=text, command=command, font=("Helvetica", 12),
-                        bg="#f5f5f7", fg="#1d1d1f", relief="flat", anchor="w", 
-                        activebackground="#e8e8ed", cursor="hand2", bd=0)
-        btn.pack(fill="x", pady=2, ipady=5)
-
-    def log(self, message):
-        now = datetime.datetime.now().strftime("%H:%M:%S")
-        self.log_display.insert(tk.END, f"[{now}] {message}\n")
-        self.log_display.see(tk.END)
-
-    # --- Befehle ---
-
-    def check_loop(self):
-        """Prüft im Hintergrund, ob ein iPhone verbunden ist."""
-        def run():
-            while True:
-                try:
-                    # 'usbmux list' ist der schnellste Weg für den Heartbeat
-                    res = subprocess.run([self.python_exe, "-m", "pymobiledevice3", "usbmux", "list"], 
-                                         capture_output=True, text=True)
-                    if "udid" in res.stdout.lower():
-                        self.status_card.config(text="Gerät verbunden ✅", fg="#34c759", bg="#e5f9e7")
-                    else:
-                        self.status_card.config(text="Kein Gerät erkannt", fg="#86868b", bg="#f2f2f7")
-                except: pass
-                import time
-                time.sleep(5)
-        threading.Thread(target=run, daemon=True).start()
-
-    def cmd_info(self):
-        self.log("Lese Geräte-Details aus...")
-        self.run_pmd3(["diagnostics", "device-info"])
-
-    def cmd_battery(self):
-        self.log("Analysiere Batterie-Zyklen (ioregistry)...")
-        self.run_pmd3(["diagnostics", "ioregistry", "--entry", "AppleSmartBattery"])
-
-    def cmd_supervision(self):
-        self.log("Starte Enterprise-Supervision Prozess...")
-        # Nutzt eu.org für das Profil (aus deinen Vorgaben)
-        self.run_pmd3(["management", "set-cloud-config", "--org", "Fusion.eu.org", "--supervision"])
-
-    def cmd_syslog(self):
-        self.log("Öffne Live-Syslog...")
-        # Öffnet ein neues Terminal-Fenster für den Log-Stream
-        if sys.platform == "darwin":
-            subprocess.Popen(['osascript', '-e', f'tell application "Terminal" to do script "{self.python_exe} -m pymobiledevice3 syslog"'])
-
-    def run_pmd3(self, args):
-        """Führt pymobiledevice3 Befehle sicher in einem Thread aus."""
-        def thread_task():
-            full_cmd = [self.python_exe, "-m", "pymobiledevice3"] + args
+    def device_check_logic(self):
+        import time
+        while True:
+            # Wir prüfen nur, ob das Tool überhaupt da ist, ohne Endlosschleife bei Fehlern
             try:
-                process = subprocess.run(full_cmd, capture_output=True, text=True, timeout=30)
-                if process.stdout:
-                    self.log(process.stdout)
-                if process.stderr and "warning" not in process.stderr.lower():
-                    self.log(f"Fehler: {process.stderr}")
-            except Exception as e:
-                self.log(f"Prozess-Fehler: {str(e)}")
-        
-        threading.Thread(target=thread_task).start()
+                # WICHTIG: Wir rufen pymobiledevice3 NICHT über -m auf, wenn wir unsicher sind
+                # sondern checken nur die USB-Liste
+                cmd = ["pymobiledevice3", "usbmux", "list"] 
+                subprocess.run(cmd, capture_output=True, timeout=5)
+            except Exception:
+                pass
+            time.sleep(10) # Hoher Intervall zur CPU-Schonung
+
+    def run_info(self):
+        threading.Thread(target=self._execute_cmd, args=(["diagnostics", "device-info"],)).start()
+
+    def _execute_cmd(self, args):
+        try:
+            # Sicherer Aufruf
+            cmd = ["pymobiledevice3"] + args
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            self.root.after(0, self.log, res.stdout)
+        except Exception as e:
+            self.root.after(0, self.log, f"Fehler: {str(e)}")
+
+    def emergency_exit(self):
+        self.root.quit()
+        sys.exit()
 
 if __name__ == "__main__":
+    # DAS HIER VERHINDERT DAS DAUERHAFTE ÖFFNEN (FORK BOMB)
+    multiprocessing.freeze_support()
+    
     root = tk.Tk()
     app = FusionPro(root)
     root.mainloop()
