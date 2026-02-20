@@ -1,22 +1,30 @@
-name: Build Windows EXE
+name: Build Fusion EXE
 on: [push]
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive  # Lädt den Nugget-Code automatisch nach
+          fetch-depth: 0
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      - name: Install Dependencies
-        run: |
-          pip install pyinstaller pymobiledevice3
-          if (Test-Path Nugget/requirements.txt) { pip install -r Nugget/requirements.txt }
-      - name: Create EXE
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller pymobiledevice3
+
+      - name: Build EXE
+        # Dieser Befehl packt dein Skript und den Nugget-Ordner zusammen
         run: pyinstaller --onefile --windowed --add-data "Nugget;Nugget" FusionMain.py
+
       - name: Upload EXE
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: FusionTool-Windows
+          name: Fusion-Windows-App
           path: dist/FusionMain.exe
