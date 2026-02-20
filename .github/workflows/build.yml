@@ -1,14 +1,19 @@
-name: Build Fusion EXE
+name: Build Fusion (EXE & DMG)
 on: [push]
 
 jobs:
   build:
-    runs-on: windows-latest
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          submodules: recursive  # Lädt den Nugget-Code automatisch nach
+          submodules: recursive
           fetch-depth: 0
 
       - name: Set up Python
@@ -16,15 +21,27 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller pymobiledevice3
+      - name: Install Dependencies
+        run: |
+          pip install pyinstaller pymobiledevice3
+          # Falls Nugget requirements hat, installieren wir sie
+          python -m pip install -r Nugget/requirements.txt || echo "Keine requirements gefunden"
 
-      - name: Build EXE
-        # Dieser Befehl packt dein Skript und den Nugget-Ordner zusammen
+      - name: Build App (Windows)
+        if: matrix.os == 'windows-latest'
         run: pyinstaller --onefile --windowed --add-data "Nugget;Nugget" FusionMain.py
 
-      - name: Upload EXE
+      - name: Build App (Mac)
+        if: matrix.os == 'macos-latest'
+        run: |
+          pyinstaller --onefile --windowed --add-data "Nugget:Nugget" FusionMain.py
+          # Wir machen daraus ein einfaches ZIP, das wie eine DMG funktioniert
+          cd dist && zip -r FusionMain_Mac.zip FusionMain.app
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Fusion-Windows-App
-          path: dist/FusionMain.exe
+          name: Fusion-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.zip
